@@ -1,5 +1,11 @@
 use std::cmp::min;
 use std::collections::HashMap;
+use std::io::Result;
+
+#[cfg(feature = "img")]
+use image::{DynamicImage, GenericImageView, Pixel};
+#[cfg(feature = "img")]
+use image::io::Reader as ImageReader;
 
 pub fn get_signature(rgba_buffer: &[u8], width: usize) -> Vec<i8> {
     let gray = grayscale(rgba_buffer, width);
@@ -10,26 +16,52 @@ pub fn get_signature(rgba_buffer: &[u8], width: usize) -> Vec<i8> {
     compute_signature(averages)
 }
 
+#[cfg(feature = "img")]
+pub fn get_image_signature<I: GenericImageView>(img: I) -> Vec<i8> {
+    let flat_gray: Vec<u8> = img.pixels()
+        .map(|(_, _, p)| p.to_rgba().0)
+        .map(|p| compute_avg(p[0], p[1], p[2], p[3]))
+        .collect();
+    let gray = flat_gray.chunks(img.width() as usize).collect();
+
+    let bounds = crop_boundaries(&gray);
+    let points = grid_points(bounds);
+    let averages = grid_averages(gray, points);
+
+    compute_signature(averages)
+}
+
+#[cfg(feature = "img")]
+pub fn get_file_signature<P: PathLike>(path: P) -> Result<Vec<i8>> {
+    let image = ImageReader::open(path)?.decode()?;
+    Ok(get_image_signature(image))
+}
+
 fn grayscale(rgba_buffer: &[u8], width: usize) -> Vec<Vec<u8>> {
     let mut result = vec![];
     let mut idx: usize = 0;
     while idx < rgba_buffer.len() {
         let mut row = vec![];
         for _ in 0..width {
-            let rgb_avg = (
-                rgba_buffer[idx] as u16 +
-                    rgba_buffer[idx + 1] as u16 +
-                    rgba_buffer[idx + 2] as u16
-            ) / 3;
+            let avg = compute_avg(
+                rgba_buffer[idx],
+                rgba_buffer[idx + 1],
+                rgba_buffer[idx + 2],
+                rgba_buffer[idx + 3],
+            );
 
-            let with_alpha = ((rgb_avg as f32) * (rgba_buffer[idx + 3] as f32 / 255.0)) as u8;
-            row.push(with_alpha);
+            row.push(avg);
             idx += 4;
         }
         result.push(row);
     }
 
     result
+}
+
+fn compute_avg(r: u8, g: u8, b: u8, a: u8) -> u8 {
+    let rgb_avg = (r as u16 + g as u16 + b as u16) / 3;
+    ((rgb_avg as f32) * (a as f32 / 255.0)) as u8
 }
 
 struct Bounds {
