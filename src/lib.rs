@@ -1,11 +1,22 @@
 use std::cmp::min;
 use std::collections::HashMap;
-use std::io::Result;
 
 #[cfg(feature = "img")]
-use image::{DynamicImage, GenericImageView, Pixel};
+use std::io;
+#[cfg(feature = "img")]
+use std::error::Error;
+#[cfg(feature = "img")]
+use std::fmt::{Debug, Display, Formatter};
+#[cfg(feature = "img")]
+use std::path::Path;
+#[cfg(feature = "img")]
+use image::{GenericImageView, ImageError, Pixel};
 #[cfg(feature = "img")]
 use image::io::Reader as ImageReader;
+#[cfg(feature = "img")]
+use num::ToPrimitive;
+#[cfg(feature = "img")]
+use ImageReadError::{DecodeError, IoError};
 
 pub fn get_signature(rgba_buffer: &[u8], width: usize) -> Vec<i8> {
     let gray = grayscale_buffer(rgba_buffer, width);
@@ -25,11 +36,65 @@ pub fn get_image_signature<I: GenericImageView>(img: I) -> Vec<i8> {
 }
 
 #[cfg(feature = "img")]
-pub fn get_file_signature<P: PathLike>(path: P) -> Result<Vec<i8>> {
+pub fn get_file_signature<P: AsRef<Path>>(path: P) -> Result<Vec<i8>> {
     let image = ImageReader::open(path)?.decode()?;
     Ok(get_image_signature(image))
 }
 
+#[cfg(feature = "img")]
+pub enum ImageReadError {
+    IoError(io::Error),
+    DecodeError(ImageError)
+}
+
+#[cfg(feature = "img")]
+impl Debug for ImageReadError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IoError(e) => Debug::fmt(e, f),
+            DecodeError(e) => Debug::fmt(e, f),
+        }
+    }
+}
+
+#[cfg(feature = "img")]
+impl Display for ImageReadError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IoError(e) => Display::fmt(e, f),
+            DecodeError(e) => Display::fmt(e, f),
+        }
+    }
+}
+
+#[cfg(feature = "img")]
+impl Error for ImageReadError {
+    fn cause(&self) -> Option<&dyn Error> {
+        match self {
+            IoError(e) => Some(e),
+            DecodeError(e) => Some(e)
+        }
+    }
+}
+
+#[cfg(feature = "img")]
+impl From<io::Error> for ImageReadError {
+    fn from(e: io::Error) -> Self {
+        IoError(e)
+    }
+}
+
+#[cfg(feature = "img")]
+impl From<ImageError> for ImageReadError {
+    fn from(e: ImageError) -> Self {
+        DecodeError(e)
+    }
+}
+
+#[cfg(feature = "img")]
+pub type Result<R> = std::result::Result<R, ImageReadError>;
+
+#[cfg(feature = "img")]
 fn grayscale_image<I: GenericImageView>(img: I) -> Vec<Vec<u8>> {
     let pixels = img.pixels()
         .map(|(_, _, p)| p.to_rgba().0);
@@ -38,7 +103,12 @@ fn grayscale_image<I: GenericImageView>(img: I) -> Vec<Vec<u8>> {
     let mut row = vec![];
     let mut col = 0;
     for pixel in pixels {
-        row.push(pixel_gray(pixel[0], pixel[1], pixel[2], pixel[3]));
+        row.push(pixel_gray(
+            pixel[0].to_u8().unwrap(),
+            pixel[1].to_u8().unwrap(),
+            pixel[2].to_u8().unwrap(),
+            pixel[3].to_u8().unwrap(),
+        ));
         col += 1;
         if col >= img.width() {
             result.push(row);
