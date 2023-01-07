@@ -41,6 +41,7 @@ struct Bounds {
     lower_y: usize,
     upper_y: usize,
 }
+
 /*
 Step 2, part 1
 "For each column of the image, we compute the sum of absolute values of differences between
