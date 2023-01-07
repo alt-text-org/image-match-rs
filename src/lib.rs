@@ -1,8 +1,5 @@
-use std::cmp::{max, min};
+use std::cmp::min;
 use std::collections::HashMap;
-use image::GenericImageView;
-
-const SIGNATURE_LEN: usize = 544;
 
 pub fn get_signature(rgba_buffer: &[u8], width: usize) -> Vec<i8> {
     let gray = grayscale(rgba_buffer, width);
@@ -25,7 +22,7 @@ fn grayscale(rgba_buffer: &[u8], width: usize) -> Vec<Vec<u8>> {
                     rgba_buffer[idx + 2] as u16
             ) / 3;
 
-            let with_alpha = ((rgb_avg as f32) * (rgba[idx + 3] as f32 / 255)) as u8;
+            let with_alpha = ((rgb_avg as f32) * (rgba_buffer[idx + 3] as f32 / 255.0)) as u8;
             row.push(with_alpha);
             idx += 4;
         }
@@ -53,14 +50,14 @@ lies on either side of the cropped image. We crop the rows of the image the same
 fn crop_boundaries(pixels: &Vec<Vec<u8>>) -> Bounds {
     let row_diff_sums: Vec<i32> = (0..pixels.len()).map(|y|
         (1..pixels[y].len()).map(|x|
-            (pixels[y][x] as i32).abs_diff(pixels[y][x - 1] as i32)).sum()
+            pixels[y][x].abs_diff(pixels[y][x - 1]) as i32).sum()
     ).collect();
 
     let (top, bottom) = get_bounds(row_diff_sums);
 
     let col_diff_sums: Vec<i32> = (0..pixels[0].len()).map(|x|
         (1..pixels.len()).map(|y|
-            (pixels[y][x] as i32).abs_diff(pixels[y][x - 1] as i32)).sum()
+            pixels[y][x].abs_diff(pixels[y][x - 1]) as i32).sum()
     ).collect();
 
     let (left, right) = get_bounds(col_diff_sums);
@@ -74,7 +71,8 @@ fn crop_boundaries(pixels: &Vec<Vec<u8>>) -> Bounds {
 }
 
 fn get_bounds(diff_sums: Vec<i32>) -> (usize, usize) {
-    let threshold = diff_sums.iter().sum() / 20;
+    let total_diff_sum: i32 = diff_sums.iter().map(|v| *v).sum();
+    let threshold = total_diff_sum / 20;
     let mut lower = 0;
     let mut upper = diff_sums.len() - 1;
     let mut sum = 0;
@@ -98,7 +96,7 @@ fn grid_points(bounds: Bounds) -> HashMap<(i8, i8), (usize, usize)> {
     let mut points = HashMap::new();
     for x in 0..10 {
         for y in 0..10 {
-            points.insert((x as i8, y as i8), (x * x_width, y * y_width))
+            points.insert((x as i8, y as i8), (x * x_width, y * y_width));
         }
     }
 
@@ -133,6 +131,15 @@ fn grid_averages(
     result
 }
 
+//Sins, crimes, etc
+fn max(a: f32, b: f32) -> f32 {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
+
 fn compute_signature(point_averages: HashMap<(i8, i8), u8>) -> Vec<i8> {
     let mut diff_matrix = Vec::new();
     for ((grid_x, grid_y), gray) in &point_averages {
@@ -140,7 +147,7 @@ fn compute_signature(point_averages: HashMap<(i8, i8), u8>) -> Vec<i8> {
             (-1, -1), (0, -1), (1, -1),
             (-1, 0), (1, 0),
             (-1, 1), (0, 1), (1, 1)
-        ].iter().filter_map(|delta_x, delta_y| {
+        ].iter().filter_map(|(delta_x, delta_y)| {
             if let Some(other) = point_averages.get(&(*grid_x + delta_x, *grid_y + delta_y)) {
                 Some(compute_diff(*gray, *other))
             } else {
@@ -148,7 +155,7 @@ fn compute_signature(point_averages: HashMap<(i8, i8), u8>) -> Vec<i8> {
             }
         }).collect();
 
-        let (mut dark, mut light): (Vec<i16>, Vec<i16>) = raw_point_diffs.iter()
+        let (dark, light): (Vec<i16>, Vec<i16>) = raw_point_diffs.iter()
             .filter(|d| **d != 0)
             .partition(|d| **d < 0);
 
@@ -170,7 +177,7 @@ fn compute_signature(point_averages: HashMap<(i8, i8), u8>) -> Vec<i8> {
         diff_matrix.push(collapsed);
     }
 
-    diff_matrix.flatten().collect()
+    diff_matrix.into_iter().flatten().collect()
 }
 
 fn collapse(val: i16, threshold: i16) -> i8 {
@@ -204,13 +211,13 @@ fn compute_diff(me: u8, other: u8) -> i16 {
 }
 
 fn pixel_average(pixels: &Vec<Vec<u8>>, x: usize, y: usize) -> f32 {
-    let sum = [
+    let sum: f32 = [
         (-1, -1), (0, -1), (1, -1),
         (-1, 0), (0, 0), (1, 0),
         (-1, 1), (0, 1), (1, 1)
-    ].map(|(delta_x, delta_y)|
+    ].iter().map(|(delta_x, delta_y)|
         pixels[(y as i32 + delta_y) as usize][(x as i32 + delta_x) as usize] as f32
     ).sum();
 
-    sum / 9
+    sum / 9.0
 }
