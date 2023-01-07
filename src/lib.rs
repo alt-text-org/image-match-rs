@@ -8,26 +8,19 @@ use image::{DynamicImage, GenericImageView, Pixel};
 use image::io::Reader as ImageReader;
 
 pub fn get_signature(rgba_buffer: &[u8], width: usize) -> Vec<i8> {
-    let gray = grayscale(rgba_buffer, width);
+    let gray = grayscale_buffer(rgba_buffer, width);
     let bounds = crop_boundaries(&gray);
     let points = grid_points(bounds);
     let averages = grid_averages(gray, points);
-
     compute_signature(averages)
 }
 
 #[cfg(feature = "img")]
 pub fn get_image_signature<I: GenericImageView>(img: I) -> Vec<i8> {
-    let flat_gray: Vec<u8> = img.pixels()
-        .map(|(_, _, p)| p.to_rgba().0)
-        .map(|p| compute_avg(p[0], p[1], p[2], p[3]))
-        .collect();
-    let gray = flat_gray.chunks(img.width() as usize).collect();
-
+    let gray = grayscale_image(img);
     let bounds = crop_boundaries(&gray);
     let points = grid_points(bounds);
     let averages = grid_averages(gray, points);
-
     compute_signature(averages)
 }
 
@@ -37,13 +30,33 @@ pub fn get_file_signature<P: PathLike>(path: P) -> Result<Vec<i8>> {
     Ok(get_image_signature(image))
 }
 
-fn grayscale(rgba_buffer: &[u8], width: usize) -> Vec<Vec<u8>> {
+fn grayscale_image<I: GenericImageView>(img: I) -> Vec<Vec<u8>> {
+    let pixels = img.pixels()
+        .map(|(_, _, p)| p.to_rgba().0);
+
+    let mut result = vec![];
+    let mut row = vec![];
+    let mut col = 0;
+    for pixel in pixels {
+        row.push(pixel_gray(pixel[0], pixel[1], pixel[2], pixel[3]));
+        col += 1;
+        if col >= img.width() {
+            result.push(row);
+            row = vec![];
+            col = 0;
+        }
+    }
+
+    result
+}
+
+fn grayscale_buffer(rgba_buffer: &[u8], width: usize) -> Vec<Vec<u8>> {
     let mut result = vec![];
     let mut idx: usize = 0;
     while idx < rgba_buffer.len() {
         let mut row = vec![];
         for _ in 0..width {
-            let avg = compute_avg(
+            let avg = pixel_gray(
                 rgba_buffer[idx],
                 rgba_buffer[idx + 1],
                 rgba_buffer[idx + 2],
@@ -59,7 +72,7 @@ fn grayscale(rgba_buffer: &[u8], width: usize) -> Vec<Vec<u8>> {
     result
 }
 
-fn compute_avg(r: u8, g: u8, b: u8, a: u8) -> u8 {
+fn pixel_gray(r: u8, g: u8, b: u8, a: u8) -> u8 {
     let rgb_avg = (r as u16 + g as u16 + b as u16) / 3;
     ((rgb_avg as f32) * (a as f32 / 255.0)) as u8
 }
