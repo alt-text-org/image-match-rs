@@ -1,5 +1,5 @@
 [package]
-name = "image-match-rs"
+name = "image-match"
 version = "0.1.0"
 edition = "2021"
 description = "Derives an image signature to be used in quick image comparisons"
