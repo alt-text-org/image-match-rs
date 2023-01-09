@@ -2,9 +2,16 @@
 name = "image-match-rs"
 version = "0.1.0"
 edition = "2021"
+description = "Derives an image signature to be used in quick image comparisons"
+license = "GPL 3.0"
+license-file = "LICENSE"
+homepage = "https://alt-text.org"
+repository = "https://github.com/alt-text-org/image-match-rs"
+documentation = "http://www.cs.cmu.edu/~hcwong/Pdfs/icip02.ps"
 
 [dependencies]
 image = { version = "0.24.5", optional = true}
 num = { version = "0.4.0", optional = true }
+
 [features]
 img = ["image", "num"]
