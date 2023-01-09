@@ -18,11 +18,11 @@ use num::ToPrimitive;
 #[cfg(feature = "img")]
 use ImageReadError::{DecodeError, IoError};
 
-pub fn get_signature(rgba_buffer: &[u8], width: usize) -> Vec<i8> {
+pub fn get_buffer_signature(rgba_buffer: &[u8], width: usize) -> Vec<i8> {
     let gray = grayscale_buffer(rgba_buffer, width);
     let bounds = crop_boundaries(&gray);
-    let points = grid_points(bounds);
-    let averages = grid_averages(gray, points);
+    let points = grid_points(&bounds);
+    let averages = grid_averages(gray, points, bounds);
     compute_signature(averages)
 }
 
@@ -30,8 +30,8 @@ pub fn get_signature(rgba_buffer: &[u8], width: usize) -> Vec<i8> {
 pub fn get_image_signature<I: GenericImageView>(img: I) -> Vec<i8> {
     let gray = grayscale_image(img);
     let bounds = crop_boundaries(&gray);
-    let points = grid_points(bounds);
-    let averages = grid_averages(gray, points);
+    let points = grid_points(&bounds);
+    let averages = grid_averages(gray, points, bounds);
     compute_signature(averages)
 }
 
@@ -147,6 +147,7 @@ fn pixel_gray(r: u8, g: u8, b: u8, a: u8) -> u8 {
     ((rgb_avg as f32) * (a as f32 / 255.0)) as u8
 }
 
+#[derive(Debug)]
 struct Bounds {
     lower_x: usize,
     upper_x: usize,
@@ -172,7 +173,7 @@ fn crop_boundaries(pixels: &Vec<Vec<u8>>) -> Bounds {
 
     let col_diff_sums: Vec<i32> = (0..pixels[0].len()).map(|x|
         (1..pixels.len()).map(|y|
-            pixels[y][x].abs_diff(pixels[y][x - 1]) as i32).sum()
+            pixels[y][x].abs_diff(pixels[y - 1][x]) as i32).sum()
     ).collect();
 
     let (left, right) = get_bounds(col_diff_sums);
@@ -204,13 +205,14 @@ fn get_bounds(diff_sums: Vec<i32>) -> (usize, usize) {
     (lower, upper)
 }
 
-fn grid_points(bounds: Bounds) -> HashMap<(i8, i8), (usize, usize)> {
-    let x_width = (bounds.upper_x - bounds.lower_x) / 10;
-    let y_width = (bounds.upper_y - bounds.lower_y) / 10;
+const GRID: usize = 10;
+fn grid_points(bounds: &Bounds) -> HashMap<(i8, i8), (usize, usize)> {
+    let x_width = (bounds.upper_x - bounds.lower_x) / GRID;
+    let y_width = (bounds.upper_y - bounds.lower_y) / GRID;
 
     let mut points = HashMap::new();
-    for x in 0..10 {
-        for y in 0..10 {
+    for x in 1..GRID {
+        for y in 1..GRID {
             points.insert((x as i8, y as i8), (x * x_width, y * y_width));
         }
     }
@@ -221,10 +223,13 @@ fn grid_points(bounds: Bounds) -> HashMap<(i8, i8), (usize, usize)> {
 fn grid_averages(
     pixels: Vec<Vec<u8>>,
     points: HashMap<(i8, i8), (usize, usize)>,
+    bounds: Bounds,
 ) -> HashMap<(i8, i8), u8> {
+    let x_width = bounds.upper_x - bounds.lower_x;
+    let y_width = bounds.upper_y - bounds.lower_y;
     let square_edge = (max(
         2.0,
-        (0.5 * min(pixels.len(), pixels[0].len()) as f32 / 20.0).floor(),
+        (0.5 + min(x_width, y_width) as f32 / 20.0).floor(),
     ) / 2.0) as i32;
 
     let mut result = HashMap::new();
@@ -232,15 +237,17 @@ fn grid_averages(
         let mut sum: f32 = 0.0;
         for delta_x in -square_edge..=square_edge {
             for delta_y in -square_edge..=square_edge {
-                sum += pixel_average(
+                let average = pixel_average(
                     &pixels,
                     (point_x as i32 + delta_x) as usize,
                     (point_y as i32 + delta_y) as usize,
                 );
+                sum += average;
             }
         }
 
-        result.insert(grid_coord, (sum / ((square_edge + 1) * (square_edge + 1)) as f32) as u8);
+        let i = sum / ((square_edge * 2 + 1) * (square_edge * 2 + 1)) as f32;
+        result.insert(grid_coord, i as u8);
     }
 
     result
@@ -256,28 +263,28 @@ fn max(a: f32, b: f32) -> f32 {
 }
 
 fn compute_signature(point_averages: HashMap<(i8, i8), u8>) -> Vec<i8> {
-    let mut diff_matrix = Vec::new();
-    for ((grid_x, grid_y), gray) in &point_averages {
-        let raw_point_diffs: Vec<i16> = [
-            (-1, -1), (0, -1), (1, -1),
-            (-1, 0), (1, 0),
-            (-1, 1), (0, 1), (1, 1)
-        ].iter().filter_map(|(delta_x, delta_y)| {
-            if let Some(other) = point_averages.get(&(*grid_x + delta_x, *grid_y + delta_y)) {
-                Some(compute_diff(*gray, *other))
-            } else {
-                None
-            }
-        }).collect();
+    let mut raw_diffs = vec![];
+    for grid_y in 1..(GRID as i8) {
+        for grid_x in 1..(GRID as i8)  {
+            let gray = *point_averages.get(&(grid_x, grid_y)).unwrap();
+            let raw_point_diffs: Vec<i16> = [
+                (-1, -1), (0, -1), (1, -1),
+                (-1, 0), (1, 0),
+                (-1, 1), (0, 1), (1, 1)
+            ].iter().filter_map(|(delta_x, delta_y)| {
+                if let Some(other) = point_averages.get(&(grid_x + delta_x, grid_y + delta_y)) {
+                    Some(compute_diff(gray, *other))
+                } else {
+                    None
+                }
+            }).collect();
+            raw_diffs.push(raw_point_diffs)
+        }
+    }
 
-        let (dark, light): (Vec<i16>, Vec<i16>) = raw_point_diffs.iter()
-            .filter(|d| **d != 0)
-            .partition(|d| **d < 0);
-
-        let dark_threshold = get_median(dark);
-        let light_threshold = get_median(light);
-
-        let collapsed: Vec<i8> = raw_point_diffs.into_iter()
+    let (dark_threshold, light_threshold) = get_thresholds(&raw_diffs);
+    raw_diffs.into_iter().map(|neighbors|
+        neighbors.into_iter()
             .map(|v| {
                 if v > 0 {
                     collapse(v, light_threshold)
@@ -287,16 +294,23 @@ fn compute_signature(point_averages: HashMap<(i8, i8), u8>) -> Vec<i8> {
                     0
                 }
             })
-            .collect();
+    ).flatten().collect()
+}
 
-        diff_matrix.push(collapsed);
-    }
 
-    diff_matrix.into_iter().flatten().collect()
+fn get_thresholds(raw_diffs: &Vec<Vec<i16>>) -> (i16, i16) {
+    let (dark, light): (Vec<i16>, Vec<i16>) = raw_diffs.iter().flatten()
+        .filter(|d| **d != 0)
+        .partition(|d| **d < 0);
+
+    let dark_threshold = get_median(dark);
+    let light_threshold = get_median(light);
+
+    (dark_threshold, light_threshold)
 }
 
 fn collapse(val: i16, threshold: i16) -> i8 {
-    if val.abs() > threshold.abs() {
+    if val.abs() >= threshold.abs() {
         2 * val.signum() as i8
     } else {
         val.signum() as i8
@@ -330,9 +344,9 @@ fn pixel_average(pixels: &Vec<Vec<u8>>, x: usize, y: usize) -> f32 {
         (-1, -1), (0, -1), (1, -1),
         (-1, 0), (0, 0), (1, 0),
         (-1, 1), (0, 1), (1, 1)
-    ].iter().map(|(delta_x, delta_y)|
+    ].iter().map(|(delta_x, delta_y)| {
         pixels[(y as i32 + delta_y) as usize][(x as i32 + delta_x) as usize] as f32
-    ).sum();
+    }).sum();
 
     sum / 9.0
 }
