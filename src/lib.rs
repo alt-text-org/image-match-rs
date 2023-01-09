@@ -120,6 +120,11 @@ fn grayscale_image<I: GenericImageView>(img: I) -> Vec<Vec<u8>> {
     result
 }
 
+/*
+Step 1.
+"If the image is color, we first convert it to 8-bit grayscale .. Pure white is represented by 255
+and pure black by 0."
+ */
 fn grayscale_buffer(rgba_buffer: &[u8], width: usize) -> Vec<Vec<u8>> {
     let mut result = vec![];
     let mut idx: usize = 0;
@@ -157,11 +162,20 @@ struct Bounds {
 
 /*
 Step 2, part 1
-"For each column of the image, we compute the sum of absolute values of differences between
+"We define the grid in a way that is robust to mild
+cropping, under the assumption that such cropping usually removes relatively featureless parts of
+the image, for example, the margins of a document image or the dark bottom of the Mona Lisa picture.
+For each column of the image, we compute the sum of absolute values of differences between adjacent
+pixels in that column. We compute the total of all columns, and crop the image at the 5% and 95%
+columns, that is, the columns such that 5% of the total sum of differences lies on either side of
+the cropped image. We crop the rows of the image the same way (using the sums of original uncropped
+rows).
+
+For each column of the image, we compute the sum of absolute values of differences between
 adjacent pixels in that column. We compute the total of all columns, and crop the image at
 the 5% and 95% columns, that is, the columns such that 5% of the total sum of differences
-lies on either side of the cropped image. We crop the rows of the image the same way
-(using the sums of original uncropped rows)."
+lies on either side of the cropped image. We crop the rows of the image the same way"
+(using the sums of original uncropped rows).
  */
 fn crop_boundaries(pixels: &Vec<Vec<u8>>) -> Bounds {
     let row_diff_sums: Vec<i32> = (0..pixels.len()).map(|y|
@@ -205,6 +219,15 @@ fn get_bounds(diff_sums: Vec<i32>) -> (usize, usize) {
     (lower, upper)
 }
 
+/*
+Step 2, part 2
+"We next impose a 9x9 grid of points on the image. (For large databases, a bigger grid such as 11x11
+would give greater first-stage filtering.)
+...
+Conceptually, we then divide the cropped image into a 10x10 grid of blocks. We round each interior
+grid point to the closest pixel (that is, integer coordinates), thereby setting a 􏰄 􏰗 􏰄 grid of
+points on the image."
+ */
 const GRID: usize = 10;
 fn grid_points(bounds: &Bounds) -> HashMap<(i8, i8), (usize, usize)> {
     let x_width = (bounds.upper_x - bounds.lower_x) / GRID;
@@ -220,6 +243,13 @@ fn grid_points(bounds: &Bounds) -> HashMap<(i8, i8), (usize, usize)> {
     points
 }
 
+/*
+Step 3
+"At each grid point, we compute the average gray level of the PxP square centered at the grid point.
+We ran our experiments with P = max(2, floor(0.5 + min(n, m) / 20)) where n and m are the dimensions
+of the image in pixels. The squares are slightly soft-edged, meaning that instead of using the
+pixel’s gray levels themselves, we use an average of a 􏰏 􏰗 􏰏 block centered at that pixel."
+ */
 fn grid_averages(
     pixels: Vec<Vec<u8>>,
     points: HashMap<(i8, i8), (usize, usize)>,
@@ -262,6 +292,24 @@ fn max(a: f32, b: f32) -> f32 {
     }
 }
 
+/*
+Step 4
+For each grid point, we compute an 8-element array whose elements give a comparison of the average
+gray level of the grid point square with those of its eight neighbors. The result of a comparison
+can be “much darker”, “darker”, “same”, “lighter”, or “much lighter”, represented numerically as
+-2, -1, 0, 1 and 2, respectively. The “same” values are those averages that differ by no more than
+2 on a scale of 0 to 255. We set the boundary between “much darker” and “darker” so that these two
+values are equally popular; we do the same for “lighter” and “much lighter”. The rationale in this
+step is that “same” may be very common in images with flat backgrounds (such as text documents), and
+hence it should not be included in the histogram equalization applied to the other values. Grid
+points in the first or last rows or column have fewer than 8 neighbors..."
+
+(The authors pad missing neighbors with 0's, we just omit them.)
+
+Step 5
+"The signature of an image is simply the concatenation of the 8-element arrays corresponding to the
+grid points, ordered left-to-right, top-to-bottom..."
+*/
 fn compute_signature(point_averages: HashMap<(i8, i8), u8>) -> Vec<i8> {
     let mut raw_diffs = vec![];
     for grid_y in 1..(GRID as i8) {
