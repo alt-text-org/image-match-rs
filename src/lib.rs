@@ -18,21 +18,38 @@ use num::ToPrimitive;
 #[cfg(feature = "img")]
 use ImageReadError::{DecodeError, IoError};
 
+const DEFAULT_CROP: f32 = 0.05;
+const DEFAULT_GRID_SIZE: usize = 10;
+
 pub fn get_buffer_signature(rgba_buffer: &[u8], width: usize) -> Vec<i8> {
     let gray = grayscale_buffer(rgba_buffer, width);
-    let bounds = crop_boundaries(&gray);
-    let points = grid_points(&bounds);
-    let averages = grid_averages(gray, points, bounds);
-    compute_signature(averages)
+    compute_from_gray(gray, DEFAULT_CROP, DEFAULT_GRID_SIZE)
+}
+
+pub fn get_tuned_buffer_signature(
+    rgba_buffer: &[u8],
+    width: usize,
+    crop: f32,
+    grid_size: usize,
+) -> Vec<i8> {
+    let gray = grayscale_buffer(rgba_buffer, width);
+    compute_from_gray(gray, crop, grid_size)
 }
 
 #[cfg(feature = "img")]
 pub fn get_image_signature<I: GenericImageView>(img: I) -> Vec<i8> {
     let gray = grayscale_image(img);
-    let bounds = crop_boundaries(&gray);
-    let points = grid_points(&bounds);
-    let averages = grid_averages(gray, points, bounds);
-    compute_signature(averages)
+    compute_from_gray(gray, DEFAULT_CROP, DEFAULT_GRID_SIZE)
+}
+
+#[cfg(feature = "img")]
+pub fn get_tuned_image_signature<I: GenericImageView>(
+    img: I,
+    crop: f32,
+    grid_size: usize
+) -> Vec<i8> {
+    let gray = grayscale_image(img);
+    compute_from_gray(gray, crop, grid_size)
 }
 
 #[cfg(feature = "img")]
@@ -42,9 +59,27 @@ pub fn get_file_signature<P: AsRef<Path>>(path: P) -> Result<Vec<i8>> {
 }
 
 #[cfg(feature = "img")]
+pub fn get_tuned_file_signature<P: AsRef<Path>>(
+    path: P,
+    crop: f32,
+    grid_size: usize
+) -> Result<Vec<i8>> {
+    let image = ImageReader::open(path)?.decode()?;
+    Ok(get_tuned_image_signature(image, crop, grid_size))
+}
+
+
+fn compute_from_gray(gray: Vec<Vec<u8>>, crop: f32, grid_size: usize) -> Vec<i8> {
+    let bounds = crop_boundaries(&gray, crop);
+    let points = grid_points(&bounds, grid_size);
+    let averages = grid_averages(gray, points, bounds);
+    compute_signature(averages, grid_size)
+}
+
+#[cfg(feature = "img")]
 pub enum ImageReadError {
     IoError(io::Error),
-    DecodeError(ImageError)
+    DecodeError(ImageError),
 }
 
 #[cfg(feature = "img")]
@@ -177,20 +212,20 @@ the 5% and 95% columns, that is, the columns such that 5% of the total sum of di
 lies on either side of the cropped image. We crop the rows of the image the same way"
 (using the sums of original uncropped rows).
  */
-fn crop_boundaries(pixels: &Vec<Vec<u8>>) -> Bounds {
+fn crop_boundaries(pixels: &Vec<Vec<u8>>, crop: f32) -> Bounds {
     let row_diff_sums: Vec<i32> = (0..pixels.len()).map(|y|
         (1..pixels[y].len()).map(|x|
             pixels[y][x].abs_diff(pixels[y][x - 1]) as i32).sum()
     ).collect();
 
-    let (top, bottom) = get_bounds(row_diff_sums);
+    let (top, bottom) = get_bounds(row_diff_sums, crop);
 
     let col_diff_sums: Vec<i32> = (0..pixels[0].len()).map(|x|
         (1..pixels.len()).map(|y|
             pixels[y][x].abs_diff(pixels[y - 1][x]) as i32).sum()
     ).collect();
 
-    let (left, right) = get_bounds(col_diff_sums);
+    let (left, right) = get_bounds(col_diff_sums, crop);
 
     Bounds {
         lower_x: left,
@@ -200,9 +235,9 @@ fn crop_boundaries(pixels: &Vec<Vec<u8>>) -> Bounds {
     }
 }
 
-fn get_bounds(diff_sums: Vec<i32>) -> (usize, usize) {
+fn get_bounds(diff_sums: Vec<i32>, crop: f32) -> (usize, usize) {
     let total_diff_sum: i32 = diff_sums.iter().map(|v| *v).sum();
-    let threshold = total_diff_sum / 20;
+    let threshold = (total_diff_sum as f32 * crop) as i32;
     let mut lower = 0;
     let mut upper = diff_sums.len() - 1;
     let mut sum = 0;
@@ -228,14 +263,13 @@ Conceptually, we then divide the cropped image into a 10x10 grid of blocks. We r
 grid point to the closest pixel (that is, integer coordinates), thereby setting a 􏰄 􏰗 􏰄 grid of
 points on the image."
  */
-const GRID: usize = 10;
-fn grid_points(bounds: &Bounds) -> HashMap<(i8, i8), (usize, usize)> {
-    let x_width = (bounds.upper_x - bounds.lower_x) / GRID;
-    let y_width = (bounds.upper_y - bounds.lower_y) / GRID;
+fn grid_points(bounds: &Bounds, grid_size: usize) -> HashMap<(i8, i8), (usize, usize)> {
+    let x_width = (bounds.upper_x - bounds.lower_x) / grid_size;
+    let y_width = (bounds.upper_y - bounds.lower_y) / grid_size;
 
     let mut points = HashMap::new();
-    for x in 1..GRID {
-        for y in 1..GRID {
+    for x in 1..grid_size {
+        for y in 1..grid_size {
             points.insert((x as i8, y as i8), (x * x_width, y * y_width));
         }
     }
@@ -310,10 +344,10 @@ Step 5
 "The signature of an image is simply the concatenation of the 8-element arrays corresponding to the
 grid points, ordered left-to-right, top-to-bottom..."
 */
-fn compute_signature(point_averages: HashMap<(i8, i8), u8>) -> Vec<i8> {
+fn compute_signature(point_averages: HashMap<(i8, i8), u8>, grid_size: usize) -> Vec<i8> {
     let mut raw_diffs = vec![];
-    for grid_y in 1..(GRID as i8) {
-        for grid_x in 1..(GRID as i8)  {
+    for grid_y in 1..(grid_size as i8) {
+        for grid_x in 1..(grid_size as i8) {
             let gray = *point_averages.get(&(grid_x, grid_y)).unwrap();
             let raw_point_diffs: Vec<i16> = [
                 (-1, -1), (0, -1), (1, -1),
