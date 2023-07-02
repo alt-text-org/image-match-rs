@@ -3,11 +3,15 @@ pub mod image;
 
 use std::cmp::min;
 use std::collections::HashMap;
+
+#[allow(unused_imports)] // It's actually used, I promise
 use num::Signed;
+
+/// The recommended cutoff for similarity
+pub const RECOMMENDED_SIMILARITY_CUTOFF: f64 = 0.6;
 
 const DEFAULT_CROP: f32 = 0.05;
 const DEFAULT_GRID_SIZE: usize = 10;
-const SIMILARITY_CUTOFF: f64 = 0.6;
 
 /// Produces a 544 signed byte signature for a provided image, encoded as an array of conceptually
 /// grouped RGBA bytes with the provided width. The result is designed to be compared to other
