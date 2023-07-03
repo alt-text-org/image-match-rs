@@ -126,8 +126,8 @@ fn grayscale_image<I: GenericImageView>(img: I) -> Vec<Vec<u8>> {
     let pixels = img.pixels()
         .map(|(_, _, p)| p.to_rgba().0);
 
-    let mut result = vec![];
-    let mut row = vec![];
+    let mut result = Vec::with_capacity(img.width() as usize);
+    let mut row = Vec::with_capacity(img.height() as usize);
     let mut col = 0;
     for pixel in pixels {
         row.push(pixel_gray(
@@ -139,7 +139,7 @@ fn grayscale_image<I: GenericImageView>(img: I) -> Vec<Vec<u8>> {
         col += 1;
         if col >= img.width() {
             result.push(row);
-            row = vec![];
+            row = Vec::with_capacity(img.height() as usize);
             col = 0;
         }
     }

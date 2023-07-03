@@ -7,15 +7,14 @@ use num::Signed;
 #[cfg(feature = "img")]
 pub mod image;
 
-/// The recommended cutoff for similarity
 pub const RECOMMENDED_SIMILARITY_CUTOFF: f64 = 0.6;
 
 const DEFAULT_CROP: f32 = 0.05;
 const DEFAULT_GRID_SIZE: usize = 10;
 
-/// Produces a 544 signed byte signature for a provided image, encoded as an array of conceptually
-/// grouped RGBA bytes with the provided width. The result is designed to be compared to other
-/// vectors computed by a call to this method using [cosine-similarity(a, b)].
+/// Produces a 544 signed byte signature for a provided image that's encoded as an array of
+/// conceptually grouped RGBA bytes with the provided width. The result is designed to be compared
+/// to other vectors computed by a call to this method using [cosine-similarity(a, b)].
 pub fn get_buffer_signature(rgba_buffer: &[u8], width: usize) -> Vec<i8> {
     let gray = grayscale_buffer(rgba_buffer, width);
 
@@ -57,6 +56,8 @@ pub fn get_tuned_buffer_signature(
 /// the source paper and out own research, when using the un-tuned signature calculation a cosine of
 /// 0.6 or greater indicates significant similarity.
 pub fn cosine_similarity(a: &Vec<i8>, b: &Vec<i8>) -> f64 {
+    // For our purposes here, unequal lengths is a sign of major issues in client code.
+    // One of my favorite professors always said "Crash early, crash often."
     assert_eq!(a.len(), b.len());
 
     let dot_product: f64 = a.iter().zip(b.iter())
@@ -66,8 +67,8 @@ pub fn cosine_similarity(a: &Vec<i8>, b: &Vec<i8>) -> f64 {
     dot_product / (vector_length(a) * vector_length(b))
 }
 
-fn vector_length(v: &Vec<i8>) -> f64 {
-    v.iter().map(|vi| (vi * vi) as f64).sum::<f64>().sqrt()
+fn vector_length(v: &[i8]) -> f64 {
+    v.iter().map(|vi| *vi as i32).map(|vi| (vi * vi) as f64).sum::<f64>().sqrt()
 }
 
 /// Core computation steps of image signatures. Descriptions for each step can be found on the
@@ -90,10 +91,11 @@ Step 1.
 and pure black by 0."
  */
 fn grayscale_buffer(rgba_buffer: &[u8], width: usize) -> Vec<Vec<u8>> {
-    let mut result = vec![];
+    let height = (rgba_buffer.len() / 4) / width;
+    let mut result = Vec::with_capacity(height);
     let mut idx: usize = 0;
     while idx < rgba_buffer.len() {
-        let mut row = vec![];
+        let mut row = Vec::with_capacity(width);
         for _ in 0..width {
             let avg = pixel_gray(
                 rgba_buffer[idx],
@@ -165,7 +167,7 @@ fn crop_boundaries(pixels: &Vec<Vec<u8>>, crop: f32) -> Bounds {
 }
 
 fn get_bounds(diff_sums: Vec<i32>, crop: f32) -> (usize, usize) {
-    let total_diff_sum: i32 = diff_sums.iter().map(|v| *v).sum();
+    let total_diff_sum: i32 = diff_sums.iter().sum();
     let threshold = (total_diff_sum as f32 * crop) as i32;
     let mut lower = 0;
     let mut upper = diff_sums.len() - 1;
@@ -189,7 +191,7 @@ Step 2, part 2
 would give greater first-stage filtering.)
 ...
 Conceptually, we then divide the cropped image into a 10x10 grid of blocks. We round each interior
-grid point to the closest pixel (that is, integer coordinates), thereby setting a 􏰄 􏰗 􏰄 grid of
+grid point to the closest pixel (that is, integer coordinates), thereby setting a 9x9 grid of
 points on the image."
  */
 fn grid_points(bounds: &Bounds, grid_size: usize) -> HashMap<(i8, i8), (usize, usize)> {
@@ -262,43 +264,40 @@ Step 5
 "The signature of an image is simply the concatenation of the 8-element arrays corresponding to the
 grid points, ordered left-to-right, top-to-bottom..."
 */
+const GRID_DELTAS: [(i8, i8); 9] = [
+    (-1, -1), (0, -1), (1, -1),
+    (-1, 0), (0, 0), (1, 0),
+    (-1, 1), (0, 1), (1, 1)
+];
+
 fn compute_signature(point_averages: HashMap<(i8, i8), u8>, grid_size: usize) -> Vec<i8> {
-    let mut raw_diffs = vec![];
+    let mut raw_diffs = Vec::with_capacity(grid_size * grid_size);
     for grid_y in 1..(grid_size as i8) {
         for grid_x in 1..(grid_size as i8) {
             let gray = *point_averages.get(&(grid_x, grid_y)).unwrap();
-            let raw_point_diffs: Vec<i16> = [
-                (-1, -1), (0, -1), (1, -1),
-                (-1, 0), (1, 0),
-                (-1, 1), (0, 1), (1, 1)
-            ].iter().filter_map(|(delta_x, delta_y)| {
-                if let Some(other) = point_averages.get(&(grid_x + delta_x, grid_y + delta_y)) {
-                    Some(compute_diff(gray, *other))
-                } else {
-                    None
-                }
-            }).collect();
+            let raw_point_diffs: Vec<i16> = GRID_DELTAS.iter()
+                .filter_map(|(delta_x, delta_y)| {
+                    point_averages.get(&(grid_x + delta_x, grid_y + delta_y))
+                        .map(|other| compute_diff(gray, *other))
+                }).collect();
             raw_diffs.push(raw_point_diffs)
         }
     }
 
     let (dark_threshold, light_threshold) = get_thresholds(&raw_diffs);
-    raw_diffs.into_iter().map(|neighbors|
+    raw_diffs.into_iter().flat_map(|neighbors|
         neighbors.into_iter()
             .map(|v| {
-                if v > 0 {
-                    collapse(v, light_threshold)
-                } else if v < 0 {
-                    collapse(v, dark_threshold)
-                } else {
-                    0
+                match v {
+                    v if v > 0 => collapse(v, light_threshold),
+                    v if v < 0 => collapse(v, dark_threshold),
+                    _ => 0
                 }
-            })
-    ).flatten().collect()
+            })).collect()
 }
 
 
-fn get_thresholds(raw_diffs: &Vec<Vec<i16>>) -> (i16, i16) {
+fn get_thresholds(raw_diffs: &[Vec<i16>]) -> (i16, i16) {
     let (dark, light): (Vec<i16>, Vec<i16>) = raw_diffs.iter().flatten()
         .filter(|d| **d != 0)
         .partition(|d| **d < 0);
@@ -345,7 +344,7 @@ const PIXEL_DELTAS: [(i32, i32); 9] = [
     (-1, 1), (0, 1), (1, 1)
 ];
 
-fn pixel_average(pixels: &Vec<Vec<u8>>, x: usize, y: usize) -> f32 {
+fn pixel_average(pixels: &[Vec<u8>], x: usize, y: usize) -> f32 {
     let sum: f32 = PIXEL_DELTAS.iter().map(|(delta_x, delta_y)| {
         pixels[(y as i32 + *delta_y) as usize][(x as i32 + *delta_x) as usize] as f32
     }).sum();
