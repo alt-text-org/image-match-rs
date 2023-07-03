@@ -1,11 +1,11 @@
-#[cfg(feature = "img")]
-pub mod image;
-
-use std::cmp::min;
+use std::cmp::{max, min};
 use std::collections::HashMap;
 
 #[allow(unused_imports)] // It's actually used, I promise
 use num::Signed;
+
+#[cfg(feature = "img")]
+pub mod image;
 
 /// The recommended cutoff for similarity
 pub const RECOMMENDED_SIMILARITY_CUTOFF: f64 = 0.6;
@@ -18,7 +18,15 @@ const DEFAULT_GRID_SIZE: usize = 10;
 /// vectors computed by a call to this method using [cosine-similarity(a, b)].
 pub fn get_buffer_signature(rgba_buffer: &[u8], width: usize) -> Vec<i8> {
     let gray = grayscale_buffer(rgba_buffer, width);
-    compute_from_gray(gray, DEFAULT_CROP, DEFAULT_GRID_SIZE)
+
+    let average_square_width_fn = |width, height| {
+        max(
+            2_usize,
+            (0.5 + min(width, height) as f32 / 20.0).floor() as usize,
+        ) / 2
+    };
+
+    compute_from_gray(gray, DEFAULT_CROP, DEFAULT_GRID_SIZE, average_square_width_fn)
 }
 
 /// Produces a variable length signed byte signature for a provided image, encoded as an array of
@@ -28,15 +36,20 @@ pub fn get_buffer_signature(rgba_buffer: &[u8], width: usize) -> Vec<i8> {
 /// to crop on all sides before grid placement. Note that this percentage is based not on the raw
 /// width but a calculation of color density. `grid_size` indicates how many points to place on the
 /// image for measurement in the resulting signature. Changing `grid_size` will alter the length of
-/// the signature to `8 * (grid_size - 1)^2 - 12 * (grid_size - 3) - 20`.
+/// the signature to `8 * (grid_size - 1)^2 - 12 * (grid_size - 3) - 20`.The
+/// `average_square_width_fn` controls the size of the box around each grid point that's averaged
+/// to produce that grid point's brightness value. The paper proposes
+/// `max(2, floor(0.5 + min(cropped_width, cropped_height) / 20))` but provides no information about
+/// how that was chosen.
 pub fn get_tuned_buffer_signature(
     rgba_buffer: &[u8],
     width: usize,
     crop: f32,
     grid_size: usize,
+    average_square_width_fn: fn(width: usize, height: usize) -> usize,
 ) -> Vec<i8> {
     let gray = grayscale_buffer(rgba_buffer, width);
-    compute_from_gray(gray, crop, grid_size)
+    compute_from_gray(gray, crop, grid_size, average_square_width_fn)
 }
 
 /// Computes the cosine of the angle between two feature vectors. Those vectors must have been both
@@ -59,10 +72,15 @@ fn vector_length(v: &Vec<i8>) -> f64 {
 
 /// Core computation steps of image signatures. Descriptions for each step can be found on the
 /// called functions.
-fn compute_from_gray(gray: Vec<Vec<u8>>, crop: f32, grid_size: usize) -> Vec<i8> {
+fn compute_from_gray(
+    gray: Vec<Vec<u8>>,
+    crop: f32,
+    grid_size: usize,
+    average_square_width_fn: fn(width: usize, height: usize) -> usize,
+) -> Vec<i8> {
     let bounds = crop_boundaries(&gray, crop);
     let points = grid_points(&bounds, grid_size);
-    let averages = grid_averages(gray, points, bounds);
+    let averages = grid_averages(gray, points, bounds, average_square_width_fn);
     compute_signature(averages, grid_size)
 }
 
@@ -193,19 +211,17 @@ Step 3
 "At each grid point, we compute the average gray level of the PxP square centered at the grid point.
 We ran our experiments with P = max(2, floor(0.5 + min(n, m) / 20)) where n and m are the dimensions
 of the image in pixels. The squares are slightly soft-edged, meaning that instead of using the
-pixel’s gray levels themselves, we use an average of a 􏰏 􏰗 􏰏 block centered at that pixel."
+pixel’s gray levels themselves, we use an average of a 3x3 block centered at that pixel."
  */
 fn grid_averages(
     pixels: Vec<Vec<u8>>,
     points: HashMap<(i8, i8), (usize, usize)>,
     bounds: Bounds,
+    average_square_width_fn: fn(width: usize, height: usize) -> usize,
 ) -> HashMap<(i8, i8), u8> {
-    let x_width = bounds.upper_x - bounds.lower_x;
-    let y_width = bounds.upper_y - bounds.lower_y;
-    let square_edge = (max(
-        2.0,
-        (0.5 + min(x_width, y_width) as f32 / 20.0).floor(),
-    ) / 2.0) as i32;
+    let width = bounds.upper_x - bounds.lower_x;
+    let height = bounds.upper_y - bounds.lower_y;
+    let square_edge = average_square_width_fn(width, height) as i32;
 
     let mut result = HashMap::new();
     for (grid_coord, (point_x, point_y)) in points {
@@ -226,15 +242,6 @@ fn grid_averages(
     }
 
     result
-}
-
-//Sins, crimes, etc
-fn max(a: f32, b: f32) -> f32 {
-    if a > b {
-        a
-    } else {
-        b
-    }
 }
 
 /*
@@ -332,13 +339,15 @@ fn compute_diff(me: u8, other: u8) -> i16 {
     }
 }
 
+const PIXEL_DELTAS: [(i32, i32); 9] = [
+    (-1, -1), (0, -1), (1, -1),
+    (-1, 0), (0, 0), (1, 0),
+    (-1, 1), (0, 1), (1, 1)
+];
+
 fn pixel_average(pixels: &Vec<Vec<u8>>, x: usize, y: usize) -> f32 {
-    let sum: f32 = [
-        (-1, -1), (0, -1), (1, -1),
-        (-1, 0), (0, 0), (1, 0),
-        (-1, 1), (0, 1), (1, 1)
-    ].iter().map(|(delta_x, delta_y)| {
-        pixels[(y as i32 + delta_y) as usize][(x as i32 + delta_x) as usize] as f32
+    let sum: f32 = PIXEL_DELTAS.iter().map(|(delta_x, delta_y)| {
+        pixels[(y as i32 + *delta_y) as usize][(x as i32 + *delta_x) as usize] as f32
     }).sum();
 
     sum / 9.0

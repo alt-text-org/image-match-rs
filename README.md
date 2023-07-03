@@ -15,10 +15,11 @@ alpha of a pixel, the latter two result vectors to compute their similarity. Per
 in [this research](https://github.com/alt-text-org/image-algo-testing) images with a similarity greater than `0.6` can
 be considered likely matches.
 
-If the `img` feature is used, also provided is `get_image_signature(image)` which uses the 
-[image library](https://crates.io/crates/image) to handle unpacking the image into an rgba buffer. Both signature
+If the `img` feature is used, also provided are `get_image_signature(image)` and `get_file_signature(path)` which use 
+the [image library](https://crates.io/crates/image) to handle unpacking the image into an rgba buffer. All signature
 functions also expose `tuned` versions which allow tweaking the crop percentage used during the signature computation,
-as well as the size of the collection grid which controls the length of the feature vector produced.
+as well as the size of the collection grid which controls the length of the feature vector produced and the size of the 
+square around each grid point averaged to produce a value for that point.
  
 
 Future Work
