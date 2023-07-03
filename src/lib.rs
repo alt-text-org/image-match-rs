@@ -7,8 +7,6 @@ use num::Signed;
 #[cfg(feature = "img")]
 pub mod image;
 
-pub const RECOMMENDED_SIMILARITY_CUTOFF: f64 = 0.6;
-
 const DEFAULT_CROP: f32 = 0.05;
 const DEFAULT_GRID_SIZE: usize = 10;
 
@@ -56,12 +54,12 @@ pub fn get_tuned_buffer_signature(
 /// the source paper and out own research, when using the un-tuned signature calculation a cosine of
 /// 0.6 or greater indicates significant similarity.
 pub fn cosine_similarity(a: &Vec<i8>, b: &Vec<i8>) -> f64 {
-    // For our purposes here, unequal lengths is a sign of major issues in client code.
+    // For our purposes here, unequal lengths are a sign of major issues in client code.
     // One of my favorite professors always said "Crash early, crash often."
-    assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), b.len(), "Compared vectors must be of equal length");
 
     let dot_product: f64 = a.iter().zip(b.iter())
-        .map(|(av, bv)| (av * bv) as f64)
+        .map(|(av, bv)| *av as f64 * *bv as f64)
         .sum();
 
     dot_product / (vector_length(a) * vector_length(b))
@@ -72,7 +70,7 @@ fn vector_length(v: &[i8]) -> f64 {
 }
 
 /// Core computation steps of image signatures. Descriptions for each step can be found on the
-/// called functions.
+/// called functions and are pulled directly from the implemented paper.
 fn compute_from_gray(
     gray: Vec<Vec<u8>>,
     crop: f32,
