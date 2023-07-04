@@ -53,16 +53,27 @@ pub fn get_tuned_buffer_signature(
 /// produced by calls to an un-tuned signature function or identical calls to a tuned version. Per
 /// the source paper and out own research, when using the un-tuned signature calculation a cosine of
 /// 0.6 or greater indicates significant similarity.
+/// If either vector is all zeros,
 pub fn cosine_similarity(a: &Vec<i8>, b: &Vec<i8>) -> f64 {
     // For our purposes here, unequal lengths are a sign of major issues in client code.
     // One of my favorite professors always said "Crash early, crash often."
     assert_eq!(a.len(), b.len(), "Compared vectors must be of equal length");
 
-    let dot_product: f64 = a.iter().zip(b.iter())
-        .map(|(av, bv)| *av as f64 * *bv as f64)
-        .sum();
+    let a_length = vector_length(a);
+    let b_length = vector_length(b);
+    if a_length == 0.0 || b_length == 0.0 {
+        if a_length == 0.0 && b_length == 0.0 {
+            1.0
+        } else {
+            0.0
+        }
+    } else {
+        let dot_product: f64 = a.iter().zip(b.iter())
+            .map(|(av, bv)| *av as f64 * *bv as f64)
+            .sum();
 
-    dot_product / (vector_length(a) * vector_length(b))
+        dot_product / (a_length * b_length)
+    }
 }
 
 fn vector_length(v: &[i8]) -> f64 {
