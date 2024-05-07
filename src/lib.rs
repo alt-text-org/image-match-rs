@@ -210,7 +210,10 @@ fn grid_points(bounds: &Bounds, grid_size: usize) -> HashMap<(i8, i8), (usize, u
     let mut points = HashMap::new();
     for x in 1..grid_size {
         for y in 1..grid_size {
-            points.insert((x as i8, y as i8), (x * x_width, y * y_width));
+            points.insert(
+                (x as i8, y as i8),
+                (x * x_width + bounds.lower_x, y * y_width + bounds.lower_y)
+            );
         }
     }
 
