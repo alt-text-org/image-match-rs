@@ -357,8 +357,11 @@ const PIXEL_DELTAS: [(i32, i32); 9] = [
 ];
 
 fn pixel_average(pixels: &[Vec<u8>], x: usize, y: usize) -> f32 {
+    let max_y = pixels.len() as i32 - 1;
+    let max_x = pixels[0].len() as i32 - 1;
+
     let sum: f32 = PIXEL_DELTAS.iter().map(|(delta_x, delta_y)| {
-        pixels[(y as i32 + *delta_y) as usize][(x as i32 + *delta_x) as usize] as f32
+        pixels[(y as i32 + *delta_y).clamp(0, max_y) as usize][(x as i32 + *delta_x).clamp(0, max_x) as usize] as f32
     }).sum();
 
     sum / 9.0
