@@ -418,6 +418,18 @@ mod tests {
             upper_x: 3,
             lower_y: 2,
             upper_y: 2,
-        })
+        });
+        assert_eq!(crop_boundaries(&pic, 0.25), Bounds {
+            lower_x: 3,
+            upper_x: 2,
+            lower_y: 3,
+            upper_y: 2,
+        });
+        assert_eq!(crop_boundaries(&pic, 0.5), Bounds {
+            lower_x: 3,
+            upper_x: 1,
+            lower_y: 3,
+            upper_y: 1,
+        });
     }
 }
