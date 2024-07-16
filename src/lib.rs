@@ -204,6 +204,8 @@ would give greater first-stage filtering.)
 Conceptually, we then divide the cropped image into a 10x10 grid of blocks. We round each interior
 grid point to the closest pixel (that is, integer coordinates), thereby setting a 9x9 grid of
 points on the image."
+
+- grid_size: size of superimposed grid (10 in the above example)
  */
 fn grid_points(bounds: &Bounds, grid_size: usize) -> HashMap<(i8, i8), (usize, usize)> {
     let x_width = (bounds.upper_x - bounds.lower_x) / grid_size;
@@ -431,5 +433,29 @@ mod tests {
             lower_y: 3,
             upper_y: 1,
         });
+    }
+
+    #[test]
+    fn test_grid_points() {
+        assert_eq!(grid_points(&Bounds {
+            lower_x: 5,
+            upper_x: 15,
+            lower_y: 10,
+            upper_y: 30,
+        }, 2), HashMap::from([
+            ((1, 1), (5, 10))
+        ]));
+
+        assert_eq!(grid_points(&Bounds {
+            lower_x: 5,
+            upper_x: 15,
+            lower_y: 10,
+            upper_y: 30,
+        }, 3), HashMap::from([
+            ((1, 1), (3, 6)),
+            ((2, 1), (6, 6)),
+            ((1, 2), (3, 12)),
+            ((2, 2), (6, 12)),
+        ]));
     }
 }
