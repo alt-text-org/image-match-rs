@@ -360,3 +360,29 @@ fn pixel_average(pixels: &[Vec<u8>], x: usize, y: usize) -> f32 {
 
     sum / 9.0
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_pixel_gray() {
+        assert_eq!(pixel_gray(255,255,255,255), 255);
+        assert_eq!(pixel_gray(0,0,0,0), 0);
+        assert_eq!(pixel_gray(255,255,255,0), 0);
+        assert_eq!(pixel_gray(32, 64, 96, 255), 64);
+    }
+
+    #[test]
+    fn test_grayscale_buffer() {
+        assert_eq!(grayscale_buffer(&[
+            255, 255, 255, 255,
+            128, 128, 128, 128,
+            0, 0, 0, 0,
+            0, 128, 255, 128
+        ], 2), [
+            [255, 64],
+            [0, 63]
+        ]);
+    }
+}
