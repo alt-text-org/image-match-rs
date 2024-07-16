@@ -127,7 +127,7 @@ fn pixel_gray(r: u8, g: u8, b: u8, a: u8) -> u8 {
     ((rgb_avg as f32) * (a as f32 / 255.0)) as u8
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct Bounds {
     lower_x: usize,
     upper_x: usize,
@@ -151,6 +151,8 @@ adjacent pixels in that column. We compute the total of all columns, and crop th
 the 5% and 95% columns, that is, the columns such that 5% of the total sum of differences
 lies on either side of the cropped image. We crop the rows of the image the same way"
 (using the sums of original uncropped rows).
+
+- `crop`: Percentage difference threshold, as a proportion (0.05 in the above example)
  */
 fn crop_boundaries(pixels: &Vec<Vec<u8>>, crop: f32) -> Bounds {
     let row_diff_sums: Vec<i32> = (0..pixels.len()).map(|y|
@@ -364,7 +366,21 @@ fn pixel_average(pixels: &[Vec<u8>], x: usize, y: usize) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
+    fn from_dotgrid(grid: &str) -> Vec<Vec<u8>> {
+        grid.split("\n")
+            .map(|row| row.replace(" ",""))
+            .filter(|row| row.len() > 0)
+            .map(|row| row.chars().map(|c| match c {
+                '.' => 0,
+                'o' => 64,
+                'O' => 128,
+                'x' => 192,
+                'X' => 255,
+                c => panic!("Unexpected dotgrid character '{}'", c)
+            }).collect()).collect()
+    }
+
     #[test]
     fn test_pixel_gray() {
         assert_eq!(pixel_gray(255,255,255,255), 255);
@@ -384,5 +400,24 @@ mod tests {
             [255, 64],
             [0, 63]
         ]);
+    }
+
+    #[test]
+    fn test_crop_boundaries() {
+        let pic = from_dotgrid("
+        .......
+        .oooo..
+        .oXxo..
+        .oXxo..
+        .......
+        .......
+        ");
+
+        assert_eq!(crop_boundaries(&pic, 0.05), Bounds {
+            lower_x: 2,
+            upper_x: 3,
+            lower_y: 2,
+            upper_y: 2,
+        })
     }
 }
