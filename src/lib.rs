@@ -498,4 +498,19 @@ mod tests {
             ((5, 5), (80, 0)),
         ]));
     }
+
+    #[test]
+    fn test_grid_points_tiny() {
+        assert_eq!(grid_points(&Bounds {
+            lower_x: 0,
+            upper_x: 1,
+            lower_y: 0,
+            upper_y: 1,
+        }, 3), HashMap::from([
+            ((1,1), (0,0)),
+            ((2,1), (0,0)),
+            ((1,2), (0,0)),
+            ((2,2), (0,0)),
+        ]));
+    }
 }
