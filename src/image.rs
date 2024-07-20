@@ -16,7 +16,7 @@ use crate::{compute_from_gray, DEFAULT_CROP, DEFAULT_GRID_SIZE, pixel_gray, squa
 pub fn get_image_signature<I: GenericImageView>(img: I) -> Vec<i8> {
     let gray = grayscale_image(img);
 
-    compute_from_gray(gray, DEFAULT_CROP, DEFAULT_GRID_SIZE, square_width_fn(SquareWidthMethod::MinDiv20)).into()
+    compute_from_gray(&gray, DEFAULT_CROP, DEFAULT_GRID_SIZE, square_width_fn(SquareWidthMethod::MinDiv20)).into()
 }
 
 /// Produces a variable length signed byte signature for a provided image. The result is designed to
@@ -37,7 +37,7 @@ pub fn get_tuned_image_signature<I: GenericImageView>(
     average_square_width_fn: fn(width: usize, height: usize) -> usize,
 ) -> Vec<i8> {
     let gray = grayscale_image(img);
-    compute_from_gray(gray, crop, grid_size, average_square_width_fn).into()
+    compute_from_gray(&gray, crop, grid_size, average_square_width_fn).into()
 }
 
 /// Produces a 544 signed byte signature for a provided image file. The result is designed to be
@@ -114,7 +114,7 @@ impl From<ImageError> for ImageReadError {
 
 pub type Result<R> = std::result::Result<R, ImageReadError>;
 
-fn grayscale_image<I: GenericImageView>(img: I) -> Vec<Vec<u8>> {
+pub fn grayscale_image<I: GenericImageView>(img: I) -> Vec<Vec<u8>> {
     let pixels = img.pixels()
         .map(|(_, _, p)| p.to_rgba().0);
 

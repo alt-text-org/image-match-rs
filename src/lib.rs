@@ -10,11 +10,11 @@ pub mod image;
 const DEFAULT_CROP: f32 = 0.05;
 const DEFAULT_GRID_SIZE: usize = 10;
 
-enum SquareWidthMethod {
+pub enum SquareWidthMethod {
     MinDiv20,
 }
 
-const fn square_width_fn(method: SquareWidthMethod) -> fn(usize, usize) -> usize {
+pub const fn square_width_fn(method: SquareWidthMethod) -> fn(usize, usize) -> usize {
     match method {
         SquareWidthMethod::MinDiv20 => |width, height| {
             max(
@@ -25,14 +25,14 @@ const fn square_width_fn(method: SquareWidthMethod) -> fn(usize, usize) -> usize
     }
 }
 
-struct SignatureDetails {
-    bounds: Bounds,
-    points: HashMap<(i8, i8), (usize, usize)>,
-    averages: HashMap<(i8, i8), u8>,
-    signature: Vec<i8>,
-}
-
 type Signature = Vec<i8>;
+
+pub struct SignatureDetails {
+    pub bounds: Bounds,
+    pub points: HashMap<(i8, i8), (usize, usize)>,
+    pub averages: HashMap<(i8, i8), u8>,
+    pub signature: Signature,
+}
 
 impl From<SignatureDetails> for Signature {
     fn from(details: SignatureDetails) -> Self {
@@ -46,7 +46,7 @@ impl From<SignatureDetails> for Signature {
 pub fn get_buffer_signature(rgba_buffer: &[u8], width: usize) -> Vec<i8> {
     let gray = grayscale_buffer(rgba_buffer, width);
 
-    compute_from_gray(gray, DEFAULT_CROP, DEFAULT_GRID_SIZE, square_width_fn(SquareWidthMethod::MinDiv20)).into()
+    compute_from_gray(&gray, DEFAULT_CROP, DEFAULT_GRID_SIZE, square_width_fn(SquareWidthMethod::MinDiv20)).into()
 }
 
 /// Produces a variable length signed byte signature for a provided image, encoded as an array of
@@ -69,7 +69,7 @@ pub fn get_tuned_buffer_signature(
     average_square_width_fn: fn(width: usize, height: usize) -> usize,
 ) -> Vec<i8> {
     let gray = grayscale_buffer(rgba_buffer, width);
-    compute_from_gray(gray, crop, grid_size, average_square_width_fn).into()
+    compute_from_gray(&gray, crop, grid_size, average_square_width_fn).into()
 }
 
 /// Computes the cosine of the angle between two feature vectors. Those vectors must have been both
@@ -105,8 +105,8 @@ fn vector_length(v: &[i8]) -> f64 {
 
 /// Core computation steps of image signatures. Descriptions for each step can be found on the
 /// called functions and are pulled directly from the implemented paper.
-fn compute_from_gray(
-    gray: Vec<Vec<u8>>,
+pub fn compute_from_gray(
+    gray: &Vec<Vec<u8>>,
     crop: f32,
     grid_size: usize,
     average_square_width_fn: fn(width: usize, height: usize) -> usize,
@@ -157,11 +157,11 @@ fn pixel_gray(r: u8, g: u8, b: u8, a: u8) -> u8 {
 }
 
 #[derive(Debug, PartialEq)]
-struct Bounds {
-    lower_x: usize,
-    upper_x: usize,
-    lower_y: usize,
-    upper_y: usize,
+pub struct Bounds {
+    pub lower_x: usize,
+    pub upper_x: usize,
+    pub lower_y: usize,
+    pub upper_y: usize,
 }
 
 /*
