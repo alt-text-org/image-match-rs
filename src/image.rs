@@ -10,21 +10,14 @@ use num::ToPrimitive;
 
 use ImageReadError::{DecodeError, IoError};
 
-use crate::{compute_from_gray, DEFAULT_CROP, DEFAULT_GRID_SIZE, pixel_gray};
+use crate::{compute_from_gray, DEFAULT_CROP, DEFAULT_GRID_SIZE, pixel_gray, square_width_fn, SquareWidthMethod};
 
 /// Produces a 544 signed byte signature for a provided image. The result is designed to be compared
 /// to other vectors computed by a call to this method using [cosine-similarity(a, b)].
 pub fn get_image_signature<I: GenericImageView>(img: I) -> Vec<i8> {
     let gray = grayscale_image(img);
 
-    let average_square_width_fn = |width, height| {
-        max(
-            2_usize,
-            (0.5 + min(width, height) as f32 / 20.0).floor() as usize,
-        ) / 2
-    };
-
-    compute_from_gray(gray, DEFAULT_CROP, DEFAULT_GRID_SIZE, average_square_width_fn)
+    compute_from_gray(gray, DEFAULT_CROP, DEFAULT_GRID_SIZE, square_width_fn(SquareWidthMethod::MinDiv20))
 }
 
 /// Produces a variable length signed byte signature for a provided image. The result is designed to

@@ -25,13 +25,28 @@ const fn square_width_fn(method: SquareWidthMethod) -> fn(usize, usize) -> usize
     }
 }
 
+struct SignatureDetails {
+    bounds: Bounds,
+    points: HashMap<(i8, i8), (usize, usize)>,
+    averages: HashMap<(i8, i8), u8>,
+    signature: Vec<i8>,
+}
+
+type Signature = Vec<i8>;
+
+impl From<SignatureDetails> for Signature {
+    fn from(details: SignatureDetails) -> Self {
+        details.signature
+    }
+}
+
 /// Produces a 544 signed byte signature for a provided image that's encoded as an array of
 /// conceptually grouped RGBA bytes with the provided width. The result is designed to be compared
 /// to other vectors computed by a call to this method using [cosine-similarity(a, b)].
 pub fn get_buffer_signature(rgba_buffer: &[u8], width: usize) -> Vec<i8> {
     let gray = grayscale_buffer(rgba_buffer, width);
 
-    compute_from_gray(gray, DEFAULT_CROP, DEFAULT_GRID_SIZE, square_width_fn(SquareWidthMethod::MinDiv20))
+    compute_from_gray(gray, DEFAULT_CROP, DEFAULT_GRID_SIZE, square_width_fn(SquareWidthMethod::MinDiv20)).into()
 }
 
 /// Produces a variable length signed byte signature for a provided image, encoded as an array of
@@ -54,7 +69,7 @@ pub fn get_tuned_buffer_signature(
     average_square_width_fn: fn(width: usize, height: usize) -> usize,
 ) -> Vec<i8> {
     let gray = grayscale_buffer(rgba_buffer, width);
-    compute_from_gray(gray, crop, grid_size, average_square_width_fn)
+    compute_from_gray(gray, crop, grid_size, average_square_width_fn).into()
 }
 
 /// Computes the cosine of the angle between two feature vectors. Those vectors must have been both
@@ -95,11 +110,17 @@ fn compute_from_gray(
     crop: f32,
     grid_size: usize,
     average_square_width_fn: fn(width: usize, height: usize) -> usize,
-) -> Vec<i8> {
+) -> SignatureDetails {
     let bounds = crop_boundaries(&gray, crop);
     let points = grid_points(&bounds, grid_size);
-    let averages = grid_averages(gray, points, bounds, average_square_width_fn);
-    compute_signature(averages, grid_size)
+    let averages = grid_averages(&gray, &points, &bounds, &average_square_width_fn);
+    let signature = compute_signature(&averages, grid_size);
+    SignatureDetails {
+        bounds,
+        points,
+        averages,
+        signature
+    }
 }
 
 /*
@@ -236,10 +257,10 @@ of the image in pixels. The squares are slightly soft-edged, meaning that instea
 pixel’s gray levels themselves, we use an average of a 3x3 block centered at that pixel."
  */
 fn grid_averages(
-    pixels: Vec<Vec<u8>>,
-    points: HashMap<(i8, i8), (usize, usize)>,
-    bounds: Bounds,
-    average_square_width_fn: fn(width: usize, height: usize) -> usize,
+    pixels: &Vec<Vec<u8>>,
+    points: &HashMap<(i8, i8), (usize, usize)>,
+    bounds: &Bounds,
+    average_square_width_fn: &fn(width: usize, height: usize) -> usize,
 ) -> HashMap<(i8, i8), u8> {
     let width = bounds.upper_x - bounds.lower_x;
     let height = bounds.upper_y - bounds.lower_y;
@@ -252,15 +273,15 @@ fn grid_averages(
             for delta_y in -square_edge..=square_edge {
                 let average = pixel_average(
                     &pixels,
-                    (point_x as i32 + delta_x) as usize,
-                    (point_y as i32 + delta_y) as usize,
+                    (*point_x as i32 + delta_x) as usize,
+                    (*point_y as i32 + delta_y) as usize,
                 );
                 sum += average;
             }
         }
 
         let i = sum / ((square_edge * 2 + 1) * (square_edge * 2 + 1)) as f32;
-        result.insert(grid_coord, i as u8);
+        result.insert(*grid_coord, i as u8);
     }
 
     result
@@ -290,7 +311,7 @@ const GRID_DELTAS: [(i8, i8); 9] = [
     (-1, 1), (0, 1), (1, 1)
 ];
 
-fn compute_signature(point_averages: HashMap<(i8, i8), u8>, grid_size: usize) -> Vec<i8> {
+fn compute_signature(point_averages: &HashMap<(i8, i8), u8>, grid_size: usize) -> Vec<i8> {
     let mut raw_diffs = Vec::with_capacity(grid_size * grid_size);
     for grid_y in 1..(grid_size as i8) {
         for grid_x in 1..(grid_size as i8) {
