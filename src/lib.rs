@@ -10,20 +10,28 @@ pub mod image;
 const DEFAULT_CROP: f32 = 0.05;
 const DEFAULT_GRID_SIZE: usize = 10;
 
+enum SquareWidthMethod {
+    MinDiv20,
+}
+
+const fn square_width_fn(method: SquareWidthMethod) -> fn(usize, usize) -> usize {
+    match method {
+        SquareWidthMethod::MinDiv20 => |width, height| {
+            max(
+                2_usize,
+                (0.5 + min(width, height) as f32 / 20.0).floor() as usize,
+            ) / 2
+        },
+    }
+}
+
 /// Produces a 544 signed byte signature for a provided image that's encoded as an array of
 /// conceptually grouped RGBA bytes with the provided width. The result is designed to be compared
 /// to other vectors computed by a call to this method using [cosine-similarity(a, b)].
 pub fn get_buffer_signature(rgba_buffer: &[u8], width: usize) -> Vec<i8> {
     let gray = grayscale_buffer(rgba_buffer, width);
 
-    let average_square_width_fn = |width, height| {
-        max(
-            2_usize,
-            (0.5 + min(width, height) as f32 / 20.0).floor() as usize,
-        ) / 2
-    };
-
-    compute_from_gray(gray, DEFAULT_CROP, DEFAULT_GRID_SIZE, average_square_width_fn)
+    compute_from_gray(gray, DEFAULT_CROP, DEFAULT_GRID_SIZE, square_width_fn(SquareWidthMethod::MinDiv20))
 }
 
 /// Produces a variable length signed byte signature for a provided image, encoded as an array of
