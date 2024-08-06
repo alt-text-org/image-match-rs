@@ -171,21 +171,23 @@ fn crop_boundaries(pixels: &Vec<Vec<u8>>, crop: f32) -> Bounds {
     }
 }
 
+/// Returns the max number of contiguous values on each end of `diff_sums` that are, when summed,
+/// below `crop` times the total of `diff_sums`
 fn get_bounds(diff_sums: Vec<i32>, crop: f32) -> (usize, usize) {
     let total_diff_sum: i32 = diff_sums.iter().sum();
     let threshold = (total_diff_sum as f32 * crop) as i32;
     let mut lower = 0;
     let mut upper = diff_sums.len() - 1;
-    let mut sum = 0;
+    let mut sum = diff_sums[lower];
 
     while sum < threshold {
-        sum += diff_sums[lower];
         lower += 1;
+        sum += diff_sums[lower];
     }
-    sum = 0;
+    sum = diff_sums[upper];
     while sum < threshold {
-        sum += diff_sums[upper];
         upper -= 1;
+        sum += diff_sums[upper];
     }
     (lower, upper)
 }
@@ -409,6 +411,15 @@ mod tests {
             [0, 63]
         ]);
     }
+    
+    #[test]
+    fn test_get_bounds() {
+        assert_eq!([
+            (vec![0,0,50,50,0,0], 0.05),
+            (vec![0,0,0,50,50,0,0,0], 0.05),
+        ].map(|(v, c)| get_bounds(v, c)),
+        [(2, 3), (3, 4)]);
+    }
 
     #[test]
     fn test_crop_boundaries() {
@@ -422,22 +433,22 @@ mod tests {
         ");
 
         assert_eq!(crop_boundaries(&pic, 0.05), Bounds {
+            lower_x: 1,
+            upper_x: 4,
+            lower_y: 1,
+            upper_y: 3,
+        });
+        assert_eq!(crop_boundaries(&pic, 0.25), Bounds {
             lower_x: 2,
             upper_x: 3,
             lower_y: 2,
-            upper_y: 2,
-        });
-        assert_eq!(crop_boundaries(&pic, 0.25), Bounds {
-            lower_x: 3,
-            upper_x: 2,
-            lower_y: 3,
-            upper_y: 2,
+            upper_y: 3,
         });
         assert_eq!(crop_boundaries(&pic, 0.5), Bounds {
-            lower_x: 3,
-            upper_x: 1,
-            lower_y: 3,
-            upper_y: 1,
+            lower_x: 2,
+            upper_x: 2,
+            lower_y: 2,
+            upper_y: 2,
         });
     }
 
