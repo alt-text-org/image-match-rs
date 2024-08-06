@@ -127,7 +127,7 @@ fn pixel_gray(r: u8, g: u8, b: u8, a: u8) -> u8 {
     ((rgb_avg as f32) * (a as f32 / 255.0)) as u8
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct Bounds {
     lower_x: usize,
     upper_x: usize,
@@ -137,21 +137,17 @@ struct Bounds {
 
 /*
 Step 2, part 1
-"We define the grid in a way that is robust to mild
-cropping, under the assumption that such cropping usually removes relatively featureless parts of
-the image, for example, the margins of a document image or the dark bottom of the Mona Lisa picture.
-For each column of the image, we compute the sum of absolute values of differences between adjacent
-pixels in that column. We compute the total of all columns, and crop the image at the 5% and 95%
-columns, that is, the columns such that 5% of the total sum of differences lies on either side of
-the cropped image. We crop the rows of the image the same way (using the sums of original uncropped
-rows).
+We define the grid in a way that is robust to mild cropping, under the assumption that such
+cropping usually removes relatively featureless parts of the image, for example, the margins of a
+document image or the dark bottom of the Mona Lisa picture.
 
-For each column of the image, we compute the sum of absolute values of differences between
-adjacent pixels in that column. We compute the total of all columns, and crop the image at
-the 5% and 95% columns, that is, the columns such that 5% of the total sum of differences
-lies on either side of the cropped image. We crop the rows of the image the same way"
-(using the sums of original uncropped rows).
- */
+For each column of the image, we compute the sum of absolute values of differences
+between adjacent pixels in that column. We compute the total of all columns, and crop the image
+based on the `crop` parameter, which determines how much of the image to discard. For a `crop` of
+0.05, we crop the image at the 5% and 95% columns, that is, the columns such that 5% of the total
+sum of differences lies on either side of the cropped image. We crop the rows of the image the
+same way (using the sums of original uncropped rows).
+*/
 fn crop_boundaries(pixels: &Vec<Vec<u8>>, crop: f32) -> Bounds {
     let row_diff_sums: Vec<i32> = (0..pixels.len()).map(|y|
         (1..pixels[y].len()).map(|x|
@@ -202,6 +198,8 @@ would give greater first-stage filtering.)
 Conceptually, we then divide the cropped image into a 10x10 grid of blocks. We round each interior
 grid point to the closest pixel (that is, integer coordinates), thereby setting a 9x9 grid of
 points on the image."
+
+- grid_size: size of superimposed grid (10 in the above example)
  */
 fn grid_points(bounds: &Bounds, grid_size: usize) -> HashMap<(i8, i8), (usize, usize)> {
     let x_width = (bounds.upper_x - bounds.lower_x) / grid_size;
@@ -359,4 +357,154 @@ fn pixel_average(pixels: &[Vec<u8>], x: usize, y: usize) -> f32 {
     }).sum();
 
     sum / 9.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn from_dotgrid(grid: &str) -> Vec<Vec<u8>> {
+        grid.split("\n")
+            .map(|row| row.replace(" ",""))
+            .filter(|row| row.len() > 0)
+            .map(|row| row.chars().map(|c| match c {
+                '.' => 0,
+                'o' => 64,
+                'O' => 128,
+                'x' => 192,
+                'X' => 255,
+                c => panic!("Unexpected dotgrid character '{}'", c)
+            }).collect()).collect()
+    }
+
+    #[test]
+    fn test_pixel_gray() {
+        assert_eq!(pixel_gray(255,255,255,255), 255);
+        assert_eq!(pixel_gray(0,0,0,0), 0);
+        assert_eq!(pixel_gray(255,255,255,0), 0);
+        assert_eq!(pixel_gray(32, 64, 96, 255), 64);
+    }
+
+    #[test]
+    fn test_grayscale_buffer() {
+        assert_eq!(grayscale_buffer(&[
+            255, 255, 255, 255,
+            128, 128, 128, 128,
+            0, 0, 0, 0,
+            0, 128, 255, 128
+        ], 2), [
+            [255, 64],
+            [0, 63]
+        ]);
+    }
+
+    #[test]
+    fn test_crop_boundaries() {
+        let pic = from_dotgrid("
+        .......
+        .oooo..
+        .oXxo..
+        .oXxo..
+        .......
+        .......
+        ");
+
+        assert_eq!(crop_boundaries(&pic, 0.05), Bounds {
+            lower_x: 2,
+            upper_x: 3,
+            lower_y: 2,
+            upper_y: 2,
+        });
+        assert_eq!(crop_boundaries(&pic, 0.25), Bounds {
+            lower_x: 3,
+            upper_x: 2,
+            lower_y: 3,
+            upper_y: 2,
+        });
+        assert_eq!(crop_boundaries(&pic, 0.5), Bounds {
+            lower_x: 3,
+            upper_x: 1,
+            lower_y: 3,
+            upper_y: 1,
+        });
+    }
+
+    #[test]
+    fn test_grid_points() {
+        assert_eq!(grid_points(&Bounds {
+            lower_x: 5,
+            upper_x: 15,
+            lower_y: 10,
+            upper_y: 30,
+        }, 2), HashMap::from([
+            ((1, 1), (5, 10))
+        ]));
+
+        assert_eq!(grid_points(&Bounds {
+            lower_x: 5,
+            upper_x: 15,
+            lower_y: 10,
+            upper_y: 30,
+        }, 3), HashMap::from([
+            ((1, 1), (3, 6)),
+            ((2, 1), (6, 6)),
+            ((1, 2), (3, 12)),
+            ((2, 2), (6, 12)),
+        ]));
+    }
+
+    #[test]
+    fn test_grid_points_extreme() {
+        assert_eq!(grid_points(&Bounds {
+            lower_x: 0,
+            upper_x: 100,
+            lower_y: 1,
+            upper_y: 1,
+        }, 6), HashMap::from([
+            ((1, 1), (16, 0)),
+            ((2, 1), (32, 0)),
+            ((3, 1), (48, 0)),
+            ((4, 1), (64, 0)),
+            ((5, 1), (80, 0)),
+
+            ((1, 2), (16, 0)),
+            ((2, 2), (32, 0)),
+            ((3, 2), (48, 0)),
+            ((4, 2), (64, 0)),
+            ((5, 2), (80, 0)),
+
+            ((1, 3), (16, 0)),
+            ((2, 3), (32, 0)),
+            ((3, 3), (48, 0)),
+            ((4, 3), (64, 0)),
+            ((5, 3), (80, 0)),
+
+            ((1, 4), (16, 0)),
+            ((2, 4), (32, 0)),
+            ((3, 4), (48, 0)),
+            ((4, 4), (64, 0)),
+            ((5, 4), (80, 0)),
+
+            ((1, 5), (16, 0)),
+            ((2, 5), (32, 0)),
+            ((3, 5), (48, 0)),
+            ((4, 5), (64, 0)),
+            ((5, 5), (80, 0)),
+        ]));
+    }
+
+    #[test]
+    fn test_grid_points_tiny() {
+        assert_eq!(grid_points(&Bounds {
+            lower_x: 0,
+            upper_x: 1,
+            lower_y: 0,
+            upper_y: 1,
+        }, 3), HashMap::from([
+            ((1,1), (0,0)),
+            ((2,1), (0,0)),
+            ((1,2), (0,0)),
+            ((2,2), (0,0)),
+        ]));
+    }
 }

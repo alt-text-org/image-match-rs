@@ -1,3 +1,5 @@
+#![cfg(feature = "img")]
+
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
@@ -6,7 +8,7 @@ use std::path::Path;
 use image_match::cosine_similarity;
 use image_match::image::get_file_signature;
 
-// #[test]
+#[test]
 fn check_match_percentages() {
     let orig = calc_sigs_for_pic_dir_files("original");
     let cropped = calc_sigs_for_pic_dir_files("cropped");
