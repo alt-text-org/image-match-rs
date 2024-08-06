@@ -137,23 +137,17 @@ struct Bounds {
 
 /*
 Step 2, part 1
-"We define the grid in a way that is robust to mild
-cropping, under the assumption that such cropping usually removes relatively featureless parts of
-the image, for example, the margins of a document image or the dark bottom of the Mona Lisa picture.
-For each column of the image, we compute the sum of absolute values of differences between adjacent
-pixels in that column. We compute the total of all columns, and crop the image at the 5% and 95%
-columns, that is, the columns such that 5% of the total sum of differences lies on either side of
-the cropped image. We crop the rows of the image the same way (using the sums of original uncropped
-rows).
+We define the grid in a way that is robust to mild cropping, under the assumption that such
+cropping usually removes relatively featureless parts of the image, for example, the margins of a
+document image or the dark bottom of the Mona Lisa picture.
 
-For each column of the image, we compute the sum of absolute values of differences between
-adjacent pixels in that column. We compute the total of all columns, and crop the image at
-the 5% and 95% columns, that is, the columns such that 5% of the total sum of differences
-lies on either side of the cropped image. We crop the rows of the image the same way"
-(using the sums of original uncropped rows).
-
-- `crop`: Percentage difference threshold, as a proportion (0.05 in the above example)
- */
+For each column of the image, we compute the sum of absolute values of differences
+between adjacent pixels in that column. We compute the total of all columns, and crop the image
+based on the `crop` parameter, which determines how much of the image to discard. For a `crop` of
+0.05, we crop the image at the 5% and 95% columns, that is, the columns such that 5% of the total
+sum of differences lies on either side of the cropped image. We crop the rows of the image the
+same way (using the sums of original uncropped rows).
+*/
 fn crop_boundaries(pixels: &Vec<Vec<u8>>, crop: f32) -> Bounds {
     let row_diff_sums: Vec<i32> = (0..pixels.len()).map(|y|
         (1..pixels[y].len()).map(|x|
