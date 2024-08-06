@@ -171,21 +171,23 @@ fn crop_boundaries(pixels: &Vec<Vec<u8>>, crop: f32) -> Bounds {
     }
 }
 
+/// Returns the max number of contiguous values on each end of `diff_sums` that are, when summed,
+/// below `crop` times the total of `diff_sums`
 fn get_bounds(diff_sums: Vec<i32>, crop: f32) -> (usize, usize) {
     let total_diff_sum: i32 = diff_sums.iter().sum();
     let threshold = (total_diff_sum as f32 * crop) as i32;
     let mut lower = 0;
     let mut upper = diff_sums.len() - 1;
-    let mut sum = 0;
+    let mut sum = diff_sums[lower];
 
     while sum < threshold {
-        sum += diff_sums[lower];
         lower += 1;
+        sum += diff_sums[lower];
     }
-    sum = 0;
+    sum = diff_sums[upper];
     while sum < threshold {
-        sum += diff_sums[upper];
         upper -= 1;
+        sum += diff_sums[upper];
     }
     (lower, upper)
 }
@@ -362,6 +364,18 @@ fn pixel_average(pixels: &[Vec<u8>], x: usize, y: usize) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::{assert_eq};
+    use std::collections::BTreeMap;
+
+    macro_rules! assert_map_eq {
+        ( $actual:expr, $expected:expr ) => {
+            {
+                let actual: BTreeMap<_, _> = ($actual).into_iter().collect();
+                let expected: BTreeMap<_, _> = ($expected).into_iter().collect();
+                assert_eq!(actual, expected)
+            }
+        }
+    }
 
     fn from_dotgrid(grid: &str) -> Vec<Vec<u8>> {
         grid.split("\n")
@@ -397,6 +411,15 @@ mod tests {
             [0, 63]
         ]);
     }
+    
+    #[test]
+    fn test_get_bounds() {
+        assert_eq!([
+            (vec![0,0,50,50,0,0], 0.05),
+            (vec![0,0,0,50,50,0,0,0], 0.05),
+        ].map(|(v, c)| get_bounds(v, c)),
+        [(2, 3), (3, 4)]);
+    }
 
     #[test]
     fn test_crop_boundaries() {
@@ -410,57 +433,57 @@ mod tests {
         ");
 
         assert_eq!(crop_boundaries(&pic, 0.05), Bounds {
+            lower_x: 1,
+            upper_x: 4,
+            lower_y: 1,
+            upper_y: 3,
+        });
+        assert_eq!(crop_boundaries(&pic, 0.25), Bounds {
             lower_x: 2,
             upper_x: 3,
             lower_y: 2,
-            upper_y: 2,
-        });
-        assert_eq!(crop_boundaries(&pic, 0.25), Bounds {
-            lower_x: 3,
-            upper_x: 2,
-            lower_y: 3,
-            upper_y: 2,
+            upper_y: 3,
         });
         assert_eq!(crop_boundaries(&pic, 0.5), Bounds {
-            lower_x: 3,
-            upper_x: 1,
-            lower_y: 3,
-            upper_y: 1,
+            lower_x: 2,
+            upper_x: 2,
+            lower_y: 2,
+            upper_y: 2,
         });
     }
 
     #[test]
     fn test_grid_points() {
-        assert_eq!(grid_points(&Bounds {
+        assert_map_eq!(grid_points(&Bounds {
             lower_x: 5,
             upper_x: 15,
             lower_y: 10,
             upper_y: 30,
-        }, 2), HashMap::from([
+        }, 2), [
             ((1, 1), (5, 10))
-        ]));
+        ]);
 
-        assert_eq!(grid_points(&Bounds {
+        assert_map_eq!(grid_points(&Bounds {
             lower_x: 5,
             upper_x: 15,
             lower_y: 10,
             upper_y: 30,
-        }, 3), HashMap::from([
+        }, 3), [
             ((1, 1), (3, 6)),
             ((2, 1), (6, 6)),
             ((1, 2), (3, 12)),
             ((2, 2), (6, 12)),
-        ]));
+        ]);
     }
 
     #[test]
     fn test_grid_points_extreme() {
-        assert_eq!(grid_points(&Bounds {
+        assert_map_eq!(grid_points(&Bounds {
             lower_x: 0,
             upper_x: 100,
             lower_y: 1,
             upper_y: 1,
-        }, 6), HashMap::from([
+        }, 6), [
             ((1, 1), (16, 0)),
             ((2, 1), (32, 0)),
             ((3, 1), (48, 0)),
@@ -490,21 +513,21 @@ mod tests {
             ((3, 5), (48, 0)),
             ((4, 5), (64, 0)),
             ((5, 5), (80, 0)),
-        ]));
+        ]);
     }
 
     #[test]
     fn test_grid_points_tiny() {
-        assert_eq!(grid_points(&Bounds {
+        assert_map_eq!(grid_points(&Bounds {
             lower_x: 0,
             upper_x: 1,
             lower_y: 0,
             upper_y: 1,
-        }, 3), HashMap::from([
+        }, 3), [
             ((1,1), (0,0)),
             ((2,1), (0,0)),
             ((1,2), (0,0)),
             ((2,2), (0,0)),
-        ]));
+        ]);
     }
 }
