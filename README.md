@@ -2,7 +2,7 @@ image-match-rs
 ==============
 
 An implementation of the image matching algorithm described in 
-[An Image Signature For Any Kind Of Image by H. Chi Wong, Marshall Bern, and David Goldberg](http://www.cs.cmu.edu/~hcwong/Pdfs/icip02.ps)
+[An Image Signature For Any Kind Of Image by H. Chi Wong, Marshall Bern, and David Goldberg](https://www.semanticscholar.org/paper/An-image-signature-for-any-kind-of-image-Wong-Bern/f0d7ae4a781b61dbf1c4fdcdc50dd82cc294d89f)
 . The algorithm is designed to detect nearly identical images, not images with the same conceptual content. 
 
 
@@ -26,7 +26,7 @@ closely before embarking on tuning, as the effects of these nobs are not immedia
 
 Future Work
 ===========
-
-- Unit testing. The library has been manually tested significantly, but it needs unit testing.
+- Additional unit testing.
+- Experimenting with parameter choice is underway in [this repo](https://github.com/alt-text-org/image-match-params).
 - Experiment with widening the possible values of each dimension in the produced signature. Presently per the paper they
   are all integers in `[-2, 2]`. It will likely require experimentation around a new suggested vector similarity cutoff.
