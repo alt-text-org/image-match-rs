@@ -53,7 +53,8 @@ pub fn get_tuned_buffer_signature(
 /// produced by calls to an un-tuned signature function or identical calls to a tuned version. Per
 /// the source paper and out own research, when using the un-tuned signature calculation a cosine of
 /// 0.6 or greater indicates significant similarity.
-/// If either vector is all zeros,
+/// For the edge case of vectors with all zeroes, we return a similarity of 0.0 if one vector is
+/// all zeroes, and a similarity of 1.0 if both are.
 pub fn cosine_similarity(a: &Vec<i8>, b: &Vec<i8>) -> f64 {
     // For our purposes here, unequal lengths are a sign of major issues in client code.
     // One of my favorite professors always said "Crash early, crash often."
