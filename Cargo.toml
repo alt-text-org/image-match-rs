@@ -1,6 +1,6 @@
 [package]
 name = "image-match"
-version = "0.2.4-dev"
+version = "0.2.4"
 edition = "2021"
 description = "Derives an image signature to be used in quick image comparisons"
 license = "GPL-3.0"
